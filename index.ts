@@ -1,3 +1,4 @@
+import "./webserver.js";
 import Discord, { Partials } from 'discord.js'
 import fs from 'fs'
 import * as debug from './common/debug.js'
