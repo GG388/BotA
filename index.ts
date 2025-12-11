@@ -1,7 +1,7 @@
 import Discord, { Partials } from 'discord.js'
 import fs from 'fs'
 import * as debug from './common/debug.js'
-import puppeteer from 'uppeteer'
+import puppeteer from 'puppeteer'
 import { startWatcher } from './common/watcher.js'
 
 // Ajout Express pour Render (free tier)
