@@ -1,8 +1,11 @@
 import Discord, { Partials } from 'discord.js'
 import fs from 'fs'
 import * as debug from './common/debug.js'
-import puppeteer from 'puppeteer'
+import puppeteer from 'uppeteer'
 import { startWatcher } from './common/watcher.js'
+
+// Ajout Express pour Render (free tier)
+import express from 'express'
 
 declare global {
   var browser: puppeteer.Browser
@@ -48,26 +51,23 @@ bot.login(token).then(() => {
 bot.on('ready', async () => {
   console.log(`
   ##########################################################################
-   _____                                        __      __         __         .__                  
-  /  _  \\   _____ _____  ____________   ____   /  \\    /  \\_____ _/  |_  ____ |  |__   ___________ 
- /  /_\\  \\ /     \\\\__  \\ \\___   /  _ \\ /    \\  \\   \\/\\/   /\\__  \\\\   __\\/ ___\\|  |  \\_/ __ \\_  __ \\
-/    |    \\  Y Y  \\/ __ \\_/    (  <_> )   |  \\  \\        /  / __ \\|  | \\  \\___|   Y  \\  ___/|  | \\/
-\\____|__  /__|_|  (____  /_____ \\____/|___|  /   \\__/\\  /  (____  /__|  \\___  >___|  /\\___  >__|   
-        \\/      \\/     \\/      \\/          \\/         \\/        \\/          \\/     \\/     \\/       
-
+   _____ __ __ __ .__
+  / _ \\ _____ _____ ____________ ____ / \\ / \\_____ _/ |_ ____ | |__ ___________
+ / /_\\ \\ / \\\\__ \\ \\___ / _ \\ / \\ \\ \\/\\/ /\\__ \\\\ __\\/ ___\\| | \\_/ __ \\_ __ \\
+/ | \\ Y Y \\/ __ \\_/ ( <_> ) | \\ \\ / / __ \\| | \\ \\___| Y \\ ___/| | \\/
+\\____|__ /__|_| (____ /_____ \\____/|___| / \\__/\\ / (____ /__| \\___ >___| /\\___ >__|
+        \\/ \\/ \\/ \\/ \\/ \\/ \\/ \\/ \\/ \\/
   by SpikeHD
   ##########################################################################
   `)
 
   if (config.prefix.length > 3) debug.log('Your prefix is more than 3 characters long. Are you sure you set it properly?', 'warn')
   if (config.prefix.length === 0) debug.log('You do not have a prefix set, you should definitely set one.', 'warn')
-
   if (config.minutes_per_check < 1) {
     debug.log('You have set minutes_per_check to something lower than a minute. This can cause the bot to start new checks before the previous cycle has finshed.', 'warn', true)
     debug.log('If you experience heightened RAM usage, CPU usage, or general slowness, bring this value back up a reasonable amount.', 'warn', true)
     debug.log('This message is not an error, and the bot is still running.', 'warn', true)
   }
-
   if (__dirname.indexOf(' ') !== -1) {
     debug.log('The current path the bot resides in contains spaces. Please move it somewhere that does not contain spaces.', 'error', true)
     process.exit()
@@ -76,9 +76,7 @@ bot.on('ready', async () => {
   // Read all files in commands/ and add them to the commands collection
   for (const command of fs.readdirSync('./commands/')) {
     const cmd = await import(`./commands/${command}`)
-
     debug.log(`Loaded command ${cmd.default.name}`, 'info')
-
     commands.set(cmd.default.name, cmd)
   }
 
@@ -89,11 +87,9 @@ bot.on('ready', async () => {
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   })
-
   debug.log('Browser initialized', 'info')
 
   startWatcher(bot)
-
   debug.log('Bot is ready!', 'info')
 })
 
@@ -113,7 +109,6 @@ bot.on('messageCreate', function (message) {
       cmd.run(bot, message, commands)
       return
     }
-
     switch(cmd.type) {
     case 'view': exec(message, args, cmd)
       break
@@ -130,9 +125,22 @@ bot.on('messageCreate', function (message) {
 async function exec(message: Discord.Message, args: string[], cmd: Command) {
   const ch = await message.channel.fetch()
   ch.sendTyping()
-
   await cmd.run(bot, message, args).catch((e: Error) => {
     message.channel.send(e.message)
     debug.log(e, 'error')
   })
 }
+
+// ======================
+// ✅ SERVEUR EXPRESS POUR RENDER (free tier) – À LA TOUTE FIN
+// ======================
+const app = express()
+const PORT = process.env.PORT || 3000
+
+app.get('/', (req, res) => {
+  res.send('BotA est en ligne et surveille Amazon 24/7 ! 🚀')
+})
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur health-check Render actif sur le port ${PORT}`)
+})
