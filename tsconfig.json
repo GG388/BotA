@@ -1,0 +1,22 @@
+{
+  "ts-node": {
+    "files": true,
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  },
+  "compilerOptions": {
+    "outDir": "./built",
+    "allowJs": true,
+    "target": "es2021",
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "esModuleInterop": true,
+    "noImplicitAny": true
+  },
+  "include": [
+    "commands/**/*.ts",
+    "common/**/*.ts",
+    "index.ts",
+    "global.d.ts"
+  ]
+}

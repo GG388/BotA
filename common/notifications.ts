@@ -1,0 +1,68 @@
+import { Client, EmbedBuilder } from 'discord.js'
+import fs from 'fs'
+import { parseParams, priceFormat } from './utils.js'
+
+const GLOBAL_MIN_DROP_PERCENT = 1  // ← Change ce chiffre pour tester : 10, 15, 20, etc.
+
+export async function sendNotifications(bot: Client, notifications: NotificationData[]) {
+  const config: Config = JSON.parse(fs.readFileSync('./config.json').toString())
+
+  for (const notif of notifications) {
+    // Si on a des url_params, on les ajoute
+    if (Object.keys(config.url_params).length > 0) {
+      notif.link += parseParams(config.url_params)
+    }
+
+    if (notif.oldPrice === 0 && notif.newPrice !== 0) {
+      // Produit qui revient en stock
+      await sendInStock(bot, notif)
+      continue
+    }
+
+    // Calcul du pourcentage de baisse
+    const priceDropPercent = notif.oldPrice > 0 ? ((notif.oldPrice - notif.newPrice) / notif.oldPrice) * 100 : 0
+
+    // Vérifie les critères personnalisés (via -e, -p, -d) ET le seuil global
+    const meetsPriceLimit = notif.priceLimit ? notif.newPrice <= notif.priceLimit : true
+    const meetsPricePercentage = notif.pricePercentage ? priceDropPercent >= notif.pricePercentage : true
+    const meetsDifference = notif.difference ? notif.newPrice < (notif.oldPrice - notif.difference) : true
+    const priceNotZero = notif.newPrice !== 0
+
+    // Condition finale : on envoie seulement si la baisse est suffisante (global + critères perso)
+    if (priceDropPercent >= GLOBAL_MIN_DROP_PERCENT && meetsPriceLimit && meetsPricePercentage && meetsDifference && priceNotZero) {
+      await sendPriceChange(bot, notif)
+    }
+  }
+}
+
+// Les fonctions sendInStock et sendPriceChange restent identiques
+export async function sendInStock(bot: Client, notification: NotificationData) {
+  const embed = new EmbedBuilder()
+    .setTitle(`In-stock alert for "${notification.itemName}"`)
+    .setAuthor({ name: 'AmazonMonitor' })
+    .setThumbnail(notification.image)
+    .setDescription(`New Price: ${notification.symbol} ${notification.newPrice}\n\n${notification.link}`)
+    .setColor('Green')
+
+  const channel = await bot.channels.fetch(notification.channelId)
+  // @ts-ignore
+  channel.send({ embeds: [embed] })
+}
+
+export async function sendPriceChange(bot: Client, notification: NotificationData) {
+  const embed = new EmbedBuilder()
+    .setTitle(`Price alert for "${notification.itemName}"`)
+    .setAuthor({ name: 'AmazonMonitor' })
+    .setThumbnail(notification.image)
+    .setDescription(
+      `Old Price: ${notification.symbol}${priceFormat(notification.oldPrice)}\n` +
+      `New Price: ${notification.symbol}${notification.newPrice.toFixed(2)}` +
+      (notification.coupon > 0 ? ` (${notification.symbol}${notification.coupon.toFixed(2)} off with coupon)` : '') +
+      `\n\n${notification.link}`
+    )
+    .setColor('Green')
+
+  const channel = await bot.channels.fetch(notification.channelId)
+  // @ts-ignore
+  channel.send({ embeds: [embed] })
+}
