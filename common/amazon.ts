@@ -1,10 +1,9 @@
 // common/amazon.ts
-import puppeteer from 'puppeteer';
 import { getPage } from './browser.js';
 import debug from './debug.js';
 import { linkToAsin } from './utils.js';
 
-// Fonction search (gardée pour le watcher, tu pourras la réimplémenter plus tard)
+// Fonction search (gardée pour le watcher – tu pourras la réimplémenter plus tard)
 export async function search(query: string, suffix: string) {
   debug.log('Fonction search appelée (non implémentée pour l’instant)', 'warn');
   return [];
@@ -16,7 +15,7 @@ export async function category(url: string) {
   return null;
 }
 
-// Fonction item (page produit) – la plus importante pour les alertes prix/restock
+// Fonction item (page produit) – la plus importante pour les alertes
 export async function item(url: string) {
   const $ = await getPage(url);
   if (!$) return null;
