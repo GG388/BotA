@@ -18,17 +18,15 @@ export async function initBrowser() {
 
   const browser = await pup.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-web-security'],
-    // Sur Render, le chemin exact du Chrome installé par puppeteer browsers
-    executablePath: '/opt/render/project/src/.cache/puppeteer/chrome/linux-*/chrome',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    executablePath: '/usr/bin/google-chrome-stable',  // ← ce chemin marchait avant
   });
 
   global.browser = browser;
-  debug.log('Browser initialized (chemin Render)', 'info');
+  debug.log('Browser initialized (chemin système)', 'info');
 }
 
 export async function getPage(url: string) {
-  // Ajoute les params d’affiliation si tu veux
   if (url.includes('/dp/')) {
     url += url.includes('?') ? '&aod=1' : '?aod=1';
   }
@@ -37,19 +35,15 @@ export async function getPage(url: string) {
 
   const page = await global.browser.newPage();
 
-  // User-agent réaliste
   const uAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
   await page.setUserAgent(uAgent);
 
-  // Headers anti-détection Amazon
+  // Headers qui aident Amazon à ne pas bloquer
   await page.setExtraHTTPHeaders({
     'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Upgrade-Insecure-Requests': '1'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
   });
 
-  // Proxy (tu gardes ton système)
   let proxy: string | null = null;
   if (fs.existsSync('proxylist.txt')) {
     const proxies = fs.readFileSync('proxylist.txt').toString().split('\n').filter(Boolean);
@@ -69,18 +63,9 @@ export async function getPage(url: string) {
     });
   }
 
-  // Navigation plus robuste
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-  // Attends que le contenu principal soit chargé (prix, bouton panier, etc.)
-  await page.waitForSelector(
-    '#corePrice_feature_div, .a-price-whole, #add-to-cart-button, #availability',
-    { timeout: 20000 }
-  ).catch(() => {
-    debug.log('Certains éléments non trouvés, mais on continue', 'warn');
-  });
-
-  const html = await page.content();
+  const html = await page.evaluate(() => document.body.innerHTML).catch(e => debug.log(e, 'error'));
   await page.close();
 
   if (!html) {
