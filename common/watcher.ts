@@ -3,30 +3,26 @@ import { ActivityType, Client } from 'discord.js'
 import fs from 'fs'
 import { addWatchlistItem, getWatchlist, removeWatchlistItem } from './watchlist.js'
 import debug from './debug.js'
-import { item, category, search } from './amazon.js'
+import { item, category, search } from './amazon.js' // garde les 3 imports
 import { sendNotifications } from './notifications.js'
 
 const config: Config = JSON.parse(fs.readFileSync('./config.json').toString())
 
 export async function startWatcher(bot: Client) {
   const curRows = await getWatchlist()
-
-  bot.user.setActivity(`${curRows.length} items! | ${config.prefix}help`, {
+  bot.user?.setActivity(`${curRows.length} items! | ${config.prefix}help`, {
     type: ActivityType.Watching,
   })
 
   setInterval(async () => {
     const rows = await getWatchlist()
-
     debug.log('Checking prices...')
-
     if (rows.length > 0) doCheck(bot, 0)
   }, config.minutes_per_check * 60 * 1000)
 }
 
 export async function doCheck(bot: Client, i: number) {
   const watchlist = await getWatchlist()
-
   if (i >= watchlist.length) return
 
   const item = watchlist[i]
@@ -34,24 +30,21 @@ export async function doCheck(bot: Client, i: number) {
 
   switch (item.type) {
     case 'link':
-      // @ts-ignore we are properly checking the type
-      result = await itemCheck(item)
+      result = await itemCheck(item as LinkItem)
       break
     case 'category':
-      // @ts-ignore we are properly checking the type
-      result = await categoryCheck(item)
+      result = await categoryCheck(item as CategoryItem)
       break
     case 'query':
-      // @ts-ignore we are properly checking the type
-      result = await queryCheck(item)
+      result = await queryCheck(item as QueryItem)
       break
   }
 
-  if (result) {
+  if (result && result.length > 0) {
     sendNotifications(bot, result)
   }
 
-  // If this is not the last index in the array, run the next check
+  // Passe au suivant avec un petit délai
   if (i < watchlist.length - 1) {
     setTimeout(() => {
       doCheck(bot, i + 1)
@@ -59,12 +52,14 @@ export async function doCheck(bot: Client, i: number) {
   }
 }
 
-async function itemCheck(product: LinkItem) {
+// Fonction pour un lien produit (link)
+async function itemCheck(product: LinkItem): Promise<NotificationData[] | null> {
   const newData = await item(product.link)
-  // It's possible the item does not have a price, so we gotta anticipate that
-  const newPrice = parseFloat(newData?.price?.replace(/,/g, '')) || -1
+  if (!newData) return null
 
-  // Push the price change to the watchlist
+  const newPrice = parseFloat(newData.price?.replace(/[^0-9,.]/g, '').replace(',', '.') || '0') || -1
+
+  // Met à jour le watchlist avec le nouveau prix
   if (newPrice !== product.lastPrice) {
     await removeWatchlistItem(product.link)
     await addWatchlistItem({
@@ -75,54 +70,42 @@ async function itemCheck(product: LinkItem) {
 
   const underPriceLimit = product.priceLimit ? newPrice <= product.priceLimit : true
 
-  debug.log(`Under price limit? ${underPriceLimit}...`, 'debug')
-  debug.log(`New price: ${newPrice}...`, 'debug')
-  debug.log(`Old price: ${product.lastPrice}...`, 'debug')
-
   if (newPrice !== -1 && underPriceLimit && product.lastPrice > newPrice) {
-    debug.log('Sending notification...', 'debug')
-
-    return [
-      {
-        itemName: newData?.fullTitle || 'N/A',
-        oldPrice: product.lastPrice,
-        newPrice,
-        link: product.link,
-        guildId: product.guildId,
-        channelId: product.channelId,
-        priceLimit: product.priceLimit || null,
-        pricePercentage: product.pricePercentage || null,
-        difference: product.difference || null,
-        symbol: newData?.symbol,
-        image: newData?.image,
-        coupon: 0
-      }
-    ] as NotificationData[]
+    return [{
+      itemName: newData.fullTitle || 'N/A',
+      oldPrice: product.lastPrice,
+      newPrice,
+      link: product.link,
+      guildId: product.guildId,
+      channelId: product.channelId,
+      priceLimit: product.priceLimit || null,
+      pricePercentage: product.pricePercentage || null,
+      difference: product.difference || null,
+      symbol: newData.symbol,
+      image: newData.image,
+      coupon: 0
+    }]
   }
-
   return null
 }
 
-async function categoryCheck(cat: CategoryItem) {
-  let total = 0
-
-  // First, get current items in category for comparison
+// Fonction pour une catégorie (on garde pour plus tard)
+async function categoryCheck(cat: CategoryItem): Promise<NotificationData[] | null> {
   const newItems = await category(cat.link)
-
-  // Match items in both arrays and only compare those prices.
-  const itemsToCompare = newItems.list.filter((ni) =>
-    cat.cache.find((o) => o.asin === ni.asin)
-  )
+  if (!newItems) return null
 
   const notifications: NotificationData[] = []
+  let total = 0
 
-  // Compare new items to cache and alert on price change
-  itemsToCompare.forEach((item) => {
-    const matchingObj = cat.cache.find((o) => o.asin === item.asin)
+  const itemsToCompare = newItems.list.filter(ni =>
+    cat.cache.find(o => o.asin === ni.asin)
+  )
 
-    if (matchingObj.lastPrice === item.lastPrice) return
+  itemsToCompare.forEach(item => {
+    const matchingObj = cat.cache.find(o => o.asin === item.asin)
+    if (!matchingObj || matchingObj.lastPrice === item.lastPrice) return
+
     total++
-
     if (item.lastPrice > matchingObj.lastPrice) {
       notifications.push({
         itemName: item.fullTitle,
@@ -135,50 +118,41 @@ async function categoryCheck(cat: CategoryItem) {
         pricePercentage: cat.pricePercentage || null,
         difference: cat.difference || null,
         symbol: item.symbol,
-        image: item?.image,
-        coupon: 0,
+        image: item.image,
+        coupon: 0
       })
     }
   })
 
-  // Push new list to watchlist
-  const addition: CategoryItem = {
-    ...cat,
-    cache: newItems.list,
-  }
-
-  debug.log(`${total} item(s) changed`, 'debug')
-
-  // Remove old stuff
+  // Met à jour la cache dans le watchlist
   await removeWatchlistItem(cat.link)
-  // Add new stuff
-  await addWatchlistItem(addition)
+  await addWatchlistItem({
+    ...cat,
+    cache: newItems.list
+  })
 
+  debug.log(`${total} item(s) changed in category`, 'debug')
   return notifications
 }
 
-async function queryCheck(query: QueryItem) {
+// Fonction pour une recherche (query)
+async function queryCheck(query: QueryItem): Promise<NotificationData[] | null> {
   const newItems = await search(query.query, config.tld)
-  const itemsToCompare = newItems.filter((ni) =>
-    query.cache.find((o) => o.asin === ni.asin)
-  )
-
   const notifications: NotificationData[] = []
 
-  // Compare new items to cache and alert on price change
-  itemsToCompare.forEach((item) => {
-    const matchingObj = query.cache.find((o) => o.asin === item.asin)
+  const itemsToCompare = newItems.filter(ni =>
+    query.cache.find(o => o.asin === ni.asin)
+  )
 
-    if (matchingObj.lastPrice === item.lastPrice) return
+  itemsToCompare.forEach(item => {
+    const matchingObj = query.cache.find(o => o.asin === item.asin)
+    if (!matchingObj || matchingObj.lastPrice === item.lastPrice) return
 
-    // if the obj has a coupon, modify the lastprice to reflect that
-    if (matchingObj?.coupon > 0) {
-      matchingObj.lastPrice -= matchingObj.coupon
-    }
-
+    // Gestion du coupon
+    const oldPriceWithCoupon = matchingObj.coupon > 0 ? matchingObj.lastPrice - matchingObj.coupon : matchingObj.lastPrice
     const newPriceWithCoupon = item.coupon > 0 ? item.lastPrice - item.coupon : item.lastPrice
 
-    if (newPriceWithCoupon < matchingObj.lastPrice) {
+    if (newPriceWithCoupon < oldPriceWithCoupon) {
       notifications.push({
         itemName: item.fullTitle,
         oldPrice: matchingObj.lastPrice,
@@ -190,22 +164,18 @@ async function queryCheck(query: QueryItem) {
         pricePercentage: query.pricePercentage || null,
         difference: query.difference || null,
         symbol: item.symbol,
-        image: item?.image,
-        coupon: item.coupon,
+        image: item.image,
+        coupon: item.coupon
       })
     }
   })
 
-  // Push new list to watchlist
-  const addition: QueryItem = {
-    ...query,
-    cache: newItems,
-  }
-
-  // Remove old stuff
+  // Met à jour la cache
   await removeWatchlistItem(query.query)
-  // Add new stuff
-  await addWatchlistItem(addition)
+  await addWatchlistItem({
+    ...query,
+    cache: newItems
+  })
 
   return notifications
 }
