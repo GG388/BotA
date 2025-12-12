@@ -25,7 +25,6 @@ export async function initBrowser() {
   global.browser = browser;
   debug.log('Browser initialized (chemin système)', 'info');
 }
-
 export async function getPage(url: string) {
   if (url.includes('/dp/')) {
     url += url.includes('?') ? '&aod=1' : '?aod=1';
