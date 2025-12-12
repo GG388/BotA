@@ -105,6 +105,21 @@ export async function item(url: string) {
 
   debug.log(`Produit ${product.fullTitle} → Prix: ${product.price} € | Stock: ${product.availability}`, 'debug');
   return product;
+  
+  // Ajoute ça à la fin de common/amazon.ts (après la fonction item)
+
+// Fonction search (pour les recherches par mot-clé)
+export async function search(query: string, suffix: string) {
+  // Pour l’instant on retourne un tableau vide, tu pourras la réimplémenter plus tard
+  debug.log('Fonction search appelée mais pas encore implémentée', 'warn');
+  return [];
+}
+
+// Fonction category (pour les catégories)
+export async function category(url: string) {
+  debug.log('Fonction category appelée mais pas encore implémentée', 'warn');
+  return
+  
 }
 
 // Les autres fonctions (category, parseBook, parseItem) peuvent rester, mais elles seront moins utilisées
