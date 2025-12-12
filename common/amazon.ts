@@ -1,59 +1,22 @@
 // common/amazon.ts
 import puppeteer from 'puppeteer';
-import { getPage } from './browser.js'; // garde ton helper existant
+import { getPage } from './browser.js';
 import debug from './debug.js';
+import { linkToAsin } from './utils.js';
 
+// Fonction search (gardée pour le watcher, tu pourras la réimplémenter plus tard)
 export async function search(query: string, suffix: string) {
-  const sanq = query.replace(/ /g, '+');
-  const url = `https://www.amazon.${suffix}/s?k=${sanq}`;
-  
-  const $ = await getPage(url);
-  const results: SearchData[] = [];
-  const foundAsins: string[] = [];
-
-  const items = $('.s-result-list .s-result-item');
-  if (items.length === 0) return results;
-
-  for (const el of items.toArray()) {
-    const $el = $(el);
-    
-    const link = $el.find('.a-link-normal[href*="/dp/"]').first().attr('href');
-    if (!link) continue;
-    
-    const asin = link.split('/dp/')[1]?.split('?')[0];
-    if (!asin || foundAsins.includes(asin)) continue;
-    foundAsins.push(asin);
-
-    // Prix actuel
-    const priceText = $el.find('.a-price .a-offscreen').first().text().trim();
-    const price = priceText ? parseFloat(priceText.replace(/[^0-9,.]/g, '').replace(',', '.')) : null;
-
-    // Coupon (si présent)
-    const couponText = $el.find('.s-coupon-unclipped span').first().text().trim();
-    let coupon = 0;
-    if (couponText) {
-      const pct = couponText.match(/(\d+)%/);
-      if (pct) coupon = price ? price * (parseInt(pct[1]) / 100) : 0;
-    }
-
-    results.push({
-      fullTitle: $el.find('span.a-text-normal').text().trim(),
-      ratings: $el.find('.a-icon-alt').text().trim(),
-      coupon,
-      price: price ? price.toFixed(2) : '',
-      lastPrice: price || 0,
-      symbol: priceText.replace(/[0-9,.]/g, '') || '€',
-      sale: $el.find('.a-text-price .a-offscreen').text().trim(),
-      fullLink: `https://www.amazon.${suffix}/dp/${asin}`,
-      image: $el.find('.s-image').attr('src'),
-      asin,
-    });
-  }
-
-  return results;
+  debug.log('Fonction search appelée (non implémentée pour l’instant)', 'warn');
+  return [];
 }
 
-// Fonction item (page produit) – la plus importante pour les alertes
+// Fonction category (gardée pour le watcher)
+export async function category(url: string) {
+  debug.log('Fonction category appelée (non implémentée pour l’instant)', 'warn');
+  return null;
+}
+
+// Fonction item (page produit) – la plus importante pour les alertes prix/restock
 export async function item(url: string) {
   const $ = await getPage(url);
   if (!$) return null;
@@ -83,10 +46,10 @@ export async function item(url: string) {
   const oldPrice = oldPriceText ? parseFloat(oldPriceText.replace(/[^0-9,.]/g, '').replace(',', '.')) : null;
 
   // Disponibilité
-  const inStock = 
-    $('#add-to-cart-button').length > 0 && !$('#add-to-cart-button').prop('disabled') ||
-    $('#buy-now-button').length > 0 ||
-    $('#availability .a-color-success').text().toLowerCase().includes('en stock');
+  const inStock =
+    ($('#add-to-cart-button').length > 0 && !$('#add-to-cart-button').prop('disabled')) ||
+    ($('#buy-now-button').length > 0) ||
+    ($('#availability .a-color-success').text().toLowerCase().includes('en stock'));
 
   const product: ProductInfo = {
     fullTitle: $('#productTitle').text().trim(),
@@ -105,21 +68,4 @@ export async function item(url: string) {
 
   debug.log(`Produit ${product.fullTitle} → Prix: ${product.price} € | Stock: ${product.availability}`, 'debug');
   return product;
-  
-  // Ajoute ça à la fin de common/amazon.ts (après la fonction item)
-
-// Fonction search (pour les recherches par mot-clé)
-export async function search(query: string, suffix: string) {
-  // Pour l’instant on retourne un tableau vide, tu pourras la réimplémenter plus tard
-  debug.log('Fonction search appelée mais pas encore implémentée', 'warn');
-  return [];
 }
-
-// Fonction category (pour les catégories)
-export async function category(url: string) {
-  debug.log('Fonction category appelée mais pas encore implémentée', 'warn');
-  return
-  
-}
-
-// Les autres fonctions (category, parseBook, parseItem) peuvent rester, mais elles seront moins utilisées
