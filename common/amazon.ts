@@ -1,70 +1,65 @@
 // common/amazon.ts
-import { getPage } from './browser.js';
-import debug from './debug.js';
-import { linkToAsin } from './utils.js';
+import fs from 'fs'
+import { CheerioAPI } from 'cheerio'
+import { getPage } from './browser.js'
+import debug from './debug.js'
+import { linkToAsin, parseParams, priceFormat } from './utils.js'
 
-// Fonction search (gardée pour le watcher – tu pourras la réimplémenter plus tard)
+const config: Config = JSON.parse(fs.readFileSync('./config.json').toString())
+
 export async function search(query: string, suffix: string) {
-  debug.log('Fonction search appelée (non implémentée pour l’instant)', 'warn');
-  return [];
+  const sanq = query.replace(/ /g, '+')
+  const url = `https://www.amazon.${suffix}/s?k=${sanq}`
+  const results: SearchData[] = []
+  const foundAsins: string[] = []
+  const $ = await getPage(url)
+  const limit = $('.s-result-list').find('.s-result-item').length
+  if (!limit || limit === 0) return results
+  $('.s-result-list').find('.s-result-item').each(function () {
+    if (results.length >= limit) return
+    const link = '/dp/' + $(this).find('.a-link-normal[href*="/dp/"]').first().attr('href')?.split('/dp/')[1].split('?')[0]
+    if (!link || link.includes('undefined')) return
+    const asin = linkToAsin(link)
+    const priceString = $(this).find('.a-price').find('.a-offscreen').first().text().trim()
+    const price = priceFormat($(this).find('.a-price').find('.a-offscreen').first().text().trim().replace(/[a-zA-Z]/g, ''))
+    const maybeCoupon = priceFormat($(this).find('.s-coupon-unclipped span').first().text().trim().replace(/[a-zA-Z]/g, ''))
+    const isPct = $(this).find('.s-coupon-unclipped span').first().text().trim().includes('%')
+    // prevent duplicates
+    if (foundAsins.includes(asin)) return
+    foundAsins.push(asin)
+    results.push({
+      fullTitle: $(this).find('span.a-text-normal').text().trim(),
+      ratings: $(this).find('.a-icon-alt').text().trim(),
+      coupon: isPct ? parseFloat(price) * (parseFloat(maybeCoupon) / 100) : maybeCoupon.includes('NaN') ? 0 : parseFloat(maybeCoupon),
+      price: price.includes('NaN') ? '' : price,
+      lastPrice: parseFloat(price) || 0,
+      symbol: priceString.replace(/[,.]+/g, '').replace(/[\d a-zA-Z]/g, ''),
+      sale: $(this).find('.a-text-price').find('.a-offscreen').eq(1).text().trim(),
+      fullLink: `https://www.amazon.${suffix}/dp/${asin}`,
+      image: $(this).find('.s-image').attr('src'),
+      asin
+    })
+  })
+  return results
 }
 
-// Fonction category (gardée pour le watcher)
 export async function category(url: string) {
-  debug.log('Fonction category appelée (non implémentée pour l’instant)', 'warn');
-  return null;
-}
-
-// Fonction item (page produit) – la plus importante pour les alertes
-export async function item(url: string) {
-  const $ = await getPage(url);
-  if (!$) return null;
-
-  // Prix actuel (plusieurs sélecteurs pour être sûr)
-  let priceText = '';
-  const selectors = [
-    '#corePriceDisplay_desktop_feature_div .a-price-whole',
-    '#corePrice_feature_div .a-price-whole',
-    '#priceblock_ourprice',
-    '#priceblock_saleprice',
-    '.a-price .a-offscreen'
-  ];
-
-  for (const sel of selectors) {
-    const txt = $(sel).first().text().trim();
-    if (txt) {
-      priceText = txt;
-      break;
-    }
+  let node = url.split('node=')[1]
+  if (node?.includes('&')) node = node.split('&')[0]
+  let ie = url.split('ie=')[1]
+  if (ie?.includes('&')) ie = ie.split('&')[0]
+  const tld = url.split('amazon.')[1].split('/')[0]
+  const path = url.split(tld + '/')[1].split('?')[0]
+  // Get parsed page with puppeteer/cheerio
+  const $ = await getPage(`https://www.amazon.${tld}/${path}/?ie=${ie}&node=${node}`).catch(e => {
+    debug.log(e, 'error')
+  })
+  if (!$) return null
+  debug.log('Detected category', 'debug')
+  const categoryObj: Category = {
+    name: $('.bxw-pageheader__title h1').text().trim(),
+    link: url,
+    list: [],
+    node
   }
-
-  const price = priceText ? parseFloat(priceText.replace(/[^0-9,.]/g, '').replace(',', '.')) : null;
-
-  // Ancien prix (baisse)
-  const oldPriceText = $('.a-price.a-text-price .a-offscreen').text().trim();
-  const oldPrice = oldPriceText ? parseFloat(oldPriceText.replace(/[^0-9,.]/g, '').replace(',', '.')) : null;
-
-  // Disponibilité
-  const inStock =
-    ($('#add-to-cart-button').length > 0 && !$('#add-to-cart-button').prop('disabled')) ||
-    ($('#buy-now-button').length > 0) ||
-    ($('#availability .a-color-success').text().toLowerCase().includes('en stock'));
-
-  const product: ProductInfo = {
-    fullTitle: $('#productTitle').text().trim(),
-    fullLink: url,
-    asin: linkToAsin(url),
-    seller: $('#bylineInfo').text().trim(),
-    price: price ? price.toFixed(2) : '',
-    lastPrice: price || 0,
-    symbol: priceText.replace(/[0-9,.]/g, '') || '€',
-    shipping: $('#deliveryBlockMessage').text().trim() || 'N/A',
-    rating: $('.a-icon-star .a-icon-alt').first().text().trim(),
-    features: $('#feature-bullets li').map((_, el) => ` - ${$(el).text().trim()}`).get(),
-    availability: inStock ? 'En stock' : 'Indisponible',
-    image: $('#landingImage').attr('data-old-hires') || $('#imgBlkFront').attr('src') || '',
-  };
-
-  debug.log(`Produit ${product.fullTitle} → Prix: ${product.price} € | Stock: ${product.availability}`, 'debug');
-  return product;
-}
+  const topRated = $('.oct
