@@ -15,7 +15,7 @@ const userAgents = [
 
 export async function initBrowser() {
   const browser = await pup.launch({
-    headless: 'shell', // version légère et rapide
+    headless: 'shell',  // version légère et rapide
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     executablePath: '/opt/render/project/src/.cache/puppeteer/chrome-headless-shell/linux-*/chrome-headless-shell',
   });
