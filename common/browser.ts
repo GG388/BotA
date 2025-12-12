@@ -14,16 +14,14 @@ const userAgents = [
 ];
 
 export async function initBrowser() {
-  const config: Config = JSON.parse(fs.readFileSync('./config.json').toString());
-
   const browser = await pup.launch({
-    headless: 'new',
+    headless: 'shell', // version légère et rapide
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    executablePath: '/usr/bin/google-chrome-stable',  // ← ce chemin marche sur Render free
+    executablePath: '/opt/render/project/src/.cache/puppeteer/chrome-headless-shell/linux-*/chrome-headless-shell',
   });
 
   global.browser = browser;
-  debug.log('Browser initialized (chemin système)', 'info');
+  debug.log('Browser initialized avec chrome-headless-shell (chemin Render)', 'info');
 }
 
 export async function getPage(url: string) {
@@ -62,9 +60,16 @@ export async function getPage(url: string) {
     });
   }
 
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-  const html = await page.evaluate(() => document.body.innerHTML).catch(e => debug.log(e, 'error'));
+  await page.waitForSelector(
+    '#corePrice_feature_div, .a-price-whole, #add-to-cart-button, #availability',
+    { timeout: 20000 }
+  ).catch(() => {
+    debug.log('Certains éléments non trouvés, mais on continue', 'warn');
+  });
+
+  const html = await page.content();
   await page.close();
 
   if (!html) {
