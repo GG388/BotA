@@ -24,7 +24,6 @@ export async function search(query: string, suffix: string) {
     const price = priceFormat($(this).find('.a-price').find('.a-offscreen').first().text().trim().replace(/[a-zA-Z]/g, ''))
     const maybeCoupon = priceFormat($(this).find('.s-coupon-unclipped span').first().text().trim().replace(/[a-zA-Z]/g, ''))
     const isPct = $(this).find('.s-coupon-unclipped span').first().text().trim().includes('%')
-    // prevent duplicates
     if (foundAsins.includes(asin)) return
     foundAsins.push(asin)
     results.push({
@@ -50,7 +49,6 @@ export async function category(url: string) {
   if (ie?.includes('&')) ie = ie.split('&')[0]
   const tld = url.split('amazon.')[1].split('/')[0]
   const path = url.split(tld + '/')[1].split('?')[0]
-  // Get parsed page with puppeteer/cheerio
   const $ = await getPage(`https://www.amazon.${tld}/${path}/?ie=${ie}&node=${node}`).catch(e => {
     debug.log(e, 'error')
   })
@@ -65,10 +63,11 @@ export async function category(url: string) {
   const topRated = $('.octopus-best-seller-card .octopus-pc-card-content li.octopus-pc-item').toArray()
  
   categoryObj.list = topRated.map((el) => {
-    const item = $(el).find('.octopus-pc-item-link')
+    const $el = $(el)
+    const item = $el.find('.octopus-pc-item-link')
     const asin = item.attr('href').split('/dp/')[1].split('?')[0].replace(/\//g, '')
     const name = item.attr('title')
-    const priceFull = $(el).find('.octopus-pc-asin-price').text().trim()
+    const priceFull = $el.find('.octopus-pc-asin-price').text().trim()
     const price = priceFormat(priceFull.replace(/[a-zA-Z]/g, ''))
     return {
       fullTitle: name,
@@ -77,7 +76,7 @@ export async function category(url: string) {
       price: price.includes('NaN') ? '' : price,
       lastPrice: parseFloat(price) || 0,
       symbol: priceFull.replace(/[,.]+/g, '').replace(/[\d a-zA-Z]/g, ''),
-      image: $(el).find('.octopus-pc-item-image').attr('src'),
+      image: $el.find('.octopus-pc-item-image').attr('src'),
       node
     }
   })
@@ -122,6 +121,8 @@ async function parseItem($: CheerioAPI, url: string): Promise<ProductInfo> {
     couponDiscount = parseInt($('label[id*="couponTextpctch"]').text().trim().match(/(\d+)/)[0], 10) || 0
   }
   const priceElms = [
+    $('#corePriceDisplay_desktop_feature_div .a-offscreen').text().trim(),
+    $('#corePrice_feature_div .a-offscreen').text().trim(),
     $('#priceblock_ourprice').text().trim(),
     $('#priceblock_saleprice').text().trim(),
     $('#sns-base-price').text().trim(),
@@ -191,7 +192,7 @@ async function parseItem($: CheerioAPI, url: string): Promise<ProductInfo> {
 async function parseBook($: CheerioAPI, url: string): Promise<ProductInfo> {
   debug.log('Detected as a book item', 'debug')
   const buyingOptions = $('#tmmSwatches').find('ul').find('li').toArray()
-  const mainPrice = priceFormat($('#buybox').find('a-color-price').first().text().trim().replace(/,/g, ''))
+  const mainPrice = priceFormat($('#buybox').find('.a-color-price').first().text().trim().replace(/,/g, ''))
   const optionsArray: string[] = []
   buyingOptions.forEach(o => {
     const type = $(o).find('.a-button-inner').find('span').first().text().trim()
