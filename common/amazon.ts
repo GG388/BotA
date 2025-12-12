@@ -62,4 +62,156 @@ export async function category(url: string) {
     list: [],
     node
   }
-  const topRated = $('.oct
+  const topRated = $('.octopus-best-seller-card .octopus-pc-card-content li.octopus-pc-item').toArray()
+ 
+  categoryObj.list = topRated.map((el) => {
+    const item = $(el).find('.octopus-pc-item-link')
+    const asin = item.attr('href').split('/dp/')[1].split('?')[0].replace(/\//g, '')
+    const name = item.attr('title')
+    const priceFull = $(el).find('.octopus-pc-asin-price').text().trim()
+    const price = priceFormat(priceFull.replace(/[a-zA-Z]/g, ''))
+    return {
+      fullTitle: name,
+      fullLink: `https://amazon.${tld}/dp/${asin}/`,
+      asin: asin,
+      price: price.includes('NaN') ? '' : price,
+      lastPrice: parseFloat(price) || 0,
+      symbol: priceFull.replace(/[,.]+/g, '').replace(/[\d a-zA-Z]/g, ''),
+      image: $(el).find('.octopus-pc-item-image').attr('src'),
+      node
+    }
+  })
+  categoryObj.node = node
+ 
+  return categoryObj
+}
+
+export async function item(url: string) {
+  if (Object.keys(config.url_params).length > 0) {
+    url += parseParams(config.url_params)
+  }
+  const $ = await getPage(url).catch(e => {
+    debug.log(e, 'error')
+  })
+  if (!$) return null
+  const category = $('#wayfinding-breadcrumbs_container').find('.a-list-item').find('a').text().trim().toLowerCase()
+  let emptyVals = 0
+  let item: ProductInfo
+ 
+  switch (category) {
+  case 'kindle store':
+  case 'books':
+    item = await parseBook($, url)
+    break
+  default:
+    item = await parseItem($, url)
+  }
+  Object.keys(item).forEach((k: keyof ProductInfo) => {
+    // @ts-ignore
+    if(typeof item[k] === 'string' && item[k].length === 0) emptyVals++
+  })
+  if(emptyVals > 1) debug.log(`Detected ${emptyVals} empty values. Could potentially mean bot was flagged`, 'warn')
+  return item
+}
+
+async function parseItem($: CheerioAPI, url: string): Promise<ProductInfo> {
+  debug.log('Detected as a regular item', 'debug')
+ 
+  let couponDiscount = 0
+  if ($('label[id*="couponTextpctch"]').text().trim() !== '') {
+    couponDiscount = parseInt($('label[id*="couponTextpctch"]').text().trim().match(/(\d+)/)[0], 10) || 0
+  }
+  const priceElms = [
+    $('#priceblock_ourprice').text().trim(),
+    $('#priceblock_saleprice').text().trim(),
+    $('#sns-base-price').text().trim(),
+    String(
+      parseFloat(priceFormat($('#corePriceDisplay_desktop_feature_div').find('.a-price').find('.a-offscreen').eq(0).text().trim())) - couponDiscount
+    ),
+    String(
+      parseFloat(priceFormat($('#corePriceDisplay_desktop_feature_div').find('.a-price-whole').first().text().trim() + $('#corePriceDisplay_desktop_feature_div').find('.a-price-fraction').first().text().trim())) - couponDiscount
+    ),
+  ]
+  const shippingElms = [
+    $('#ourprice_shippingmessage').find('.a-icon-prime') ? 'Free with prime' : $('#ourprice_shippingmessage').find('.a-color-secondary').text().trim(),
+    $('#saleprice_shippingmessage').find('b').text().trim()
+  ]
+  const features = $('#feature-bullets').find('li').find('span').toArray()
+  const parsedFeatures: string[] = []
+ 
+  features.forEach(f => {
+    parsedFeatures.push(` - ${$(f).text().trim()}`)
+  })
+  let comparePrice = ''
+  const product: ProductInfo = {
+    fullTitle: $('#productTitle').text().trim(),
+    fullLink: url,
+    asin: linkToAsin(url),
+    seller: $('#bylineInfo').text().trim(),
+    price: '',
+    lastPrice: 0,
+    symbol: '',
+    shipping: '',
+    rating: $('.a-icon-star').find('.a-icon-alt').first().text().trim(),
+    features: parsedFeatures,
+    availability: $('#availability').first().find('span').text().trim(),
+    image: $('#landingImage').attr('data-old-hires') || 'https://via.placeholder.com/300x300.png?text=No+Image'
+  }
+  const aodOffers = $('#aod-offer-price').toArray()
+  aodOffers.forEach(o => {
+    const price = $(o).find('.a-offscreen').first().text().trim()
+    if (parseFloat(priceFormat(price))) priceElms.push(price)
+  })
+  priceElms.forEach(p => {
+    const flt = parseFloat(priceFormat(p))
+    const currentPrice = parseFloat(priceFormat(product.price))
+    if (!currentPrice || flt < currentPrice) {
+      product.price = flt.toFixed(2)
+      product.lastPrice = flt
+      product.symbol = p.replace(/[,.]+/g, '').replace(/[\d a-zA-Z]/g, '')
+    }
+  })
+  if (priceElms[2].replace(/[,.]+/g, '').replace(/\d/g, '')) product.symbol = priceElms[2].replace(/[,.]+/g, '').replace(/\d/g, '')
+  const sellers = $('.pa_mbc_on_amazon_offer').toArray()
+  for (let i = 0; i < sellers.length; i++) {
+    const seller = $(sellers[i])
+    const p = seller.find('.a-color-price').text().trim()
+    const s = seller.find('.mbc-delivery').text().trim()
+    comparePrice = !comparePrice || parseFloat(priceFormat(p)) < parseFloat(comparePrice) ? priceFormat(p) : comparePrice
+    shippingElms.push(s)
+  }
+  if (!product.symbol) product.symbol = '$'
+  if (comparePrice && parseFloat(product.price) > parseFloat(comparePrice)) product.price = comparePrice
+  product.price = priceFormat(product.price)
+  debug.log('Full object', 'debug')
+  debug.log(product, 'debug')
+  return product
+}
+
+async function parseBook($: CheerioAPI, url: string): Promise<ProductInfo> {
+  debug.log('Detected as a book item', 'debug')
+  const buyingOptions = $('#tmmSwatches').find('ul').find('li').toArray()
+  const mainPrice = priceFormat($('#buybox').find('a-color-price').first().text().trim().replace(/,/g, ''))
+  const optionsArray: string[] = []
+  buyingOptions.forEach(o => {
+    const type = $(o).find('.a-button-inner').find('span').first().text().trim()
+    const price = priceFormat($(o).find('.a-button-inner').find('span').eq(1).text().trim())
+   
+    if(price.length > 1 && !type.toLowerCase().includes('audiobook')) optionsArray.push(` - ${type}: ${price}`)
+  })
+  const book: ProductInfo = {
+    fullTitle: $('#productTitle').text().trim(),
+    fullLink: url,
+    asin: linkToAsin(url),
+    seller: $('#bylineInfo').find('.contributorNameID').text().trim(),
+    price: mainPrice,
+    symbol: mainPrice.replace(/[,.]+/g, '').replace(/[\d a-zA-Z]/g, ''),
+    lastPrice: parseFloat(mainPrice),
+    shipping: 'N/A',
+    rating: $('.a-icon-star').find('.a-icon-alt').first().text().trim(),
+    features: optionsArray,
+    availability: $('#buybox').find('.a-text-center').find('a').first().text().trim(),
+    image: $('#imgBlkFront').attr('src') || 'https://via.placeholder.com/300x300.png?text=No+Image'
+  }
+  return book
+}
